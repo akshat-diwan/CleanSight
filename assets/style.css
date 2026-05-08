@@ -1,51 +1,190 @@
-/* ── Layout ── */
-.block-container {
-    padding-top: 1.5rem;
-    padding-bottom: 2rem;
-    max-width: 1100px;
+/* ── Force dark theme globally ── */
+html, body, [data-testid="stAppViewContainer"],
+[data-testid="stMain"], .main {
+    background-color: #0F1117 !important;
+    color: #F0F0F0 !important;
 }
 
-/* ── Sidebar ── */
 [data-testid="stSidebar"] {
-    border-right: 0.5px solid rgba(128,128,128,0.12);
+    background-color: #1A1D27 !important;
+    border-right: 0.5px solid rgba(255,255,255,0.06) !important;
+}
+
+[data-testid="stSidebar"] * {
+    color: #F0F0F0 !important;
+}
+
+/* Hide default header */
+[data-testid="stHeader"] {
+    background: transparent !important;
+    display: none;
+}
+
+/* ── Layout ── */
+.block-container {
+    padding-top: 2rem !important;
+    padding-bottom: 2rem !important;
+    max-width: 1100px !important;
+    background-color: #0F1117 !important;
 }
 
 /* ── Metrics ── */
 [data-testid="stMetric"] {
-    border: 0.5px solid rgba(128,128,128,0.15);
-    border-radius: 10px;
-    padding: 14px 16px;
+    background: #1A1D27 !important;
+    border: 0.5px solid rgba(255,255,255,0.07) !important;
+    border-radius: 10px !important;
+    padding: 14px 16px !important;
+}
+
+[data-testid="stMetric"] label,
+[data-testid="stMetric"] [data-testid="stMetricValue"],
+[data-testid="stMetric"] [data-testid="stMetricDelta"] {
+    color: #F0F0F0 !important;
 }
 
 /* ── Buttons ── */
 .stButton > button {
-    border-radius: 8px;
-    font-size: 13px;
-    transition: opacity 0.15s;
+    background: #1A1D27 !important;
+    color: #F0F0F0 !important;
+    border: 0.5px solid rgba(255,255,255,0.1) !important;
+    border-radius: 8px !important;
+    font-size: 13px !important;
+    transition: all 0.15s !important;
+}
+
+.stButton > button:hover {
+    background: #22263A !important;
+    border-color: rgba(55,138,221,0.4) !important;
+    color: #378ADD !important;
 }
 
 .primary-btn > button {
     background: #378ADD !important;
     color: white !important;
     border: none !important;
-    border-radius: 8px !important;
 }
 
 .primary-btn > button:hover {
-    opacity: 0.88 !important;
+    background: #185FA5 !important;
+    color: white !important;
+    border: none !important;
+}
+
+/* ── Inputs ── */
+[data-testid="stTextInput"] input,
+[data-testid="stSelectbox"],
+[data-testid="stMultiSelect"] {
+    background: #1A1D27 !important;
+    color: #F0F0F0 !important;
+    border-color: rgba(255,255,255,0.08) !important;
+    border-radius: 8px !important;
+}
+
+/* ── Dataframes / tables ── */
+[data-testid="stDataFrame"] {
+    background: #1A1D27 !important;
+    border: 0.5px solid rgba(255,255,255,0.07) !important;
+    border-radius: 10px !important;
 }
 
 /* ── Divider ── */
 hr {
-    border: none;
-    border-top: 0.5px solid rgba(128,128,128,0.12);
-    margin: 1rem 0;
+    border: none !important;
+    border-top: 0.5px solid rgba(255,255,255,0.07) !important;
+    margin: 1rem 0 !important;
+}
+
+/* ── Alerts / info boxes ── */
+[data-testid="stAlert"] {
+    background: #1A1D27 !important;
+    border-radius: 10px !important;
+    border: 0.5px solid rgba(255,255,255,0.07) !important;
 }
 
 /* ── Page link buttons ── */
 [data-testid="stPageLink"] > a {
-    border: 0.5px solid rgba(128,128,128,0.18) !important;
+    background: #1A1D27 !important;
+    border: 0.5px solid rgba(255,255,255,0.08) !important;
     border-radius: 8px !important;
+    color: #F0F0F0 !important;
     font-size: 13px !important;
-    padding: 6px 12px !important;
+}
+
+[data-testid="stPageLink"] > a:hover {
+    border-color: rgba(55,138,221,0.4) !important;
+    color: #378ADD !important;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: #0F1117; }
+::-webkit-scrollbar-thumb { background: #2A2D3A; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #378ADD; }
+
+/* ── File uploader ── */
+[data-testid="stFileUploader"] {
+    background: #1A1D27 !important;
+    border: 0.5px dashed rgba(55,138,221,0.3) !important;
+    border-radius: 10px !important;
+}
+
+/* ── Expander ── */
+[data-testid="stExpander"] {
+    background: #1A1D27 !important;
+    border: 0.5px solid rgba(255,255,255,0.07) !important;
+    border-radius: 10px !important;
+}
+
+/* ── Chat input ── */
+[data-testid="stChatInput"] {
+    background: #1A1D27 !important;
+    border: 0.5px solid rgba(255,255,255,0.1) !important;
+    border-radius: 12px !important;
+}
+
+[data-testid="stChatInput"] textarea {
+    background: #1A1D27 !important;
+    color: #F0F0F0 !important;
+}
+
+/* ── Chat messages ── */
+[data-testid="stChatMessage"] {
+    background: #1A1D27 !important;
+    border: 0.5px solid rgba(255,255,255,0.06) !important;
+    border-radius: 12px !important;
+}
+
+/* ── Sidebar nav items ── */
+[data-testid="stSidebarNavItems"] a {
+    color: #8B8FA8 !important;
+    font-size: 13px !important;
+    border-radius: 8px !important;
+    padding: 6px 10px !important;
+}
+
+[data-testid="stSidebarNavItems"] a:hover {
+    color: #F0F0F0 !important;
+    background: rgba(255,255,255,0.05) !important;
+}
+
+[data-testid="stSidebarNavItems"] a[aria-current="page"] {
+    color: #F0F0F0 !important;
+    background: rgba(255,255,255,0.08) !important;
+}
+
+/* ── Success / warning / error boxes ── */
+[data-testid="stAlert"][data-baseweb="notification"] {
+    border-radius: 8px !important;
+}
+
+/* ── Multiselect tags ── */
+[data-testid="stMultiSelect"] span[data-baseweb="tag"] {
+    background: rgba(55,138,221,0.2) !important;
+    color: #378ADD !important;
+}
+
+/* ── Selectbox dropdown ── */
+[data-baseweb="popover"] {
+    background: #1A1D27 !important;
+    border: 0.5px solid rgba(255,255,255,0.08) !important;
 }
