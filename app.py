@@ -1,558 +1,92 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import plotly.express as px
-import io
-from fpdf import FPDF
-from PIL import Image
-import matplotlib.pyplot as plt
-import seaborn as sns
-import tempfile
 
-# ------------------------- Config & Theme -------------------------
-
-st.set_page_config(page_title="Refined Data Profiling & Cleaning", layout="wide")
-
-# Colors (consistent theme)
-HEADING_COLOR = "#0A81D1"
-UI_BLUE = "#F8D7DA"  # soft pink
-HIGHLIGHT_TEXT = "#721C24"  # dark maroon
-CARD_BG = "#F4F6F8"
-
-# -------------------- Matplotlib PDF Helpers ----------------------
-def add_matplotlib_chart_to_pdf(data, chart_type, pdf, title):
-    """
-    data: pd.Series or pd.DataFrame for scatter
-    chart_type: 'hist','pie','bar','scatter'
-    pdf: FPDF object
-    title: string
-    """
-    try:
-        fig, ax = plt.subplots(figsize=(6,4))
-        if chart_type == "hist":
-            ax.hist(data.dropna(), bins=20)
-            ax.set_xlabel(data.name if hasattr(data, 'name') else 'Value')
-            ax.set_ylabel("Frequency")
-        elif chart_type == "pie":
-            counts = data.value_counts()
-            ax.pie(counts.values, labels=counts.index.astype(str), autopct='%1.1f%%')
-        elif chart_type == "bar":
-            counts = data.value_counts().head(10)
-            ax.bar(counts.index.astype(str), counts.values)
-            plt.xticks(rotation=45, ha='right')
-        elif chart_type == "scatter":
-            if isinstance(data, pd.DataFrame) and data.shape[1] >= 2:
-                ax.scatter(data.iloc[:,0], data.iloc[:,1], alpha=0.7)
-                ax.set_xlabel(data.columns[0])
-                ax.set_ylabel(data.columns[1])
-        ax.set_title(title)
-        plt.tight_layout()
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
-        fig.savefig(tmp.name, bbox_inches='tight')
-        plt.close(fig)
-        pdf.ln(5)
-        pdf.set_font("Arial", 'B', 12)
-        pdf.cell(0, 10, title, ln=True)
-        pdf.image(tmp.name, w=180)
-        pdf.ln(5)
-    except Exception as e:
-        # Write a note in PDF
-        pdf.set_font("Arial", 'I', 10)
-        pdf.ln(5)
-        pdf.cell(0, 10, f"[Could not render '{title}' - {e}]")
-        pdf.ln(5)
-
-
-def add_matplotlib_correlation_heatmap(df_numeric, pdf, title):
-    try:
-        fig, ax = plt.subplots(figsize=(6,5))
-        corr = df_numeric.corr()
-        sns.heatmap(corr, annot=True, fmt='.2f', cmap='coolwarm', ax=ax)
-        ax.set_title(title)
-        plt.tight_layout()
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
-        fig.savefig(tmp.name, bbox_inches='tight')
-        plt.close(fig)
-        pdf.ln(5)
-        pdf.set_font("Arial", 'B', 12)
-        pdf.cell(0, 10, title, ln=True)
-        pdf.image(tmp.name, w=180)
-        pdf.ln(5)
-    except Exception as e:
-        pdf.set_font("Arial", 'I', 10)
-        pdf.ln(5)
-        pdf.cell(0, 10, f"[Could not render '{title}' - {e}]")
-        pdf.ln(5)
-
-# ------------------------- Helpers -------------------------------
-def detect_delimiter(file_bytes):
-    try:
-        sample = file_bytes.read(5000).decode('utf-8')
-        dlms = [',', ';', '\t', '|']
-        counts = [sample.count(d) for d in dlms]
-        return dlms[np.argmax(counts)]
-    except Exception:
-        return ','
-
-# Robust cast function for custom fills
-def try_cast_fill(value_str, dtype):
-    """Attempt to cast custom input string to given dtype. Return (success, value_or_msg)."""
-    if value_str is None:
-        return False, None
-    v = value_str
-    try:
-        if pd.api.types.is_integer_dtype(dtype):
-            return True, int(v)
-        if pd.api.types.is_float_dtype(dtype):
-            return True, float(v)
-        # For other numeric-like, try numeric
-        if pd.api.types.is_numeric_dtype(dtype):
-            return True, float(v)
-        # For object/string dtype, keep as string
-        return True, str(v)
-    except Exception as e:
-        return False, f"Could not convert '{v}' to {dtype} ({e})"
-
-# Style function for missing highlight
-def highlight_missing(col):
-    return [f'background-color: {UI_BLUE}; color: {HIGHLIGHT_TEXT}; font-weight: bold;' if v>0 else '' for v in col]
-
-# ------------------------- UI Layout -----------------------------
-st.markdown("""
-<div style='background:#0A81D1; color:white; padding:20px; border-radius:12px; margin-bottom:16px;'>
-  <h1 style='margin:0'>Refined Data Profiling & Cleaning</h1>
-  <p style='margin:0.1em 0 0 0'>Fast profiling, guided cleaning, and robust exports (CSV/Excel/PDF/HTML).</p>
-</div>
-""", unsafe_allow_html=True)
-
-st.sidebar.header("📤 Upload Dataset")
-uploaded_file = st.sidebar.file_uploader("Upload CSV or Excel", type=["csv","xlsx"])
-
-if 'charts_meta' not in st.session_state:
-    st.session_state.charts_meta = []
-
-if not uploaded_file:
-    st.info("⬆ Please upload a file to start.")
-    st.stop()
-
-# ------------------------- Data Ingestion ------------------------
-try:
-    if uploaded_file.name.endswith('.csv'):
-        uploaded_file.seek(0)
-        delimiter = detect_delimiter(uploaded_file)
-        uploaded_file.seek(0)
-        df = pd.read_csv(uploaded_file, delimiter=delimiter, encoding='utf-8')
-    else:
-        df = pd.read_excel(uploaded_file)
-except Exception as e:
-    st.error(f"Failed to read file: {e}")
-    st.stop()
-
-original_df = df.copy(deep=True)
-
-# Basic cards
-card1, card2, card3 = st.columns(3)
-with card1:
-    st.metric("Rows", f"{df.shape[0]}")
-with card2:
-    st.metric("Columns", f"{df.shape[1]}")
-with card3:
-    st.metric("Total Nulls", f"{int(df.isnull().sum().sum())}")
-
-# Column summary
-col_data = []
-for col in df.columns:
-    col_type = df[col].dtype
-    sample = ", ".join(map(str, df[col].dropna().unique()[:5]))
-    col_data.append([col, str(col_type), df[col].nunique(), int(df[col].isna().sum()), sample])
-summary_df = pd.DataFrame(col_data, columns=["Column","Type","Unique","Missing","Sample Values"])
-
-st.markdown("#### Data Summary")
-st.dataframe(summary_df.style.apply(highlight_missing, subset=["Missing"]), use_container_width=True)
-
-st.markdown("#### Data Example (Head & Tail)")
-colH, colT = st.columns(2)
-with colH:
-    st.dataframe(df.head(5), use_container_width=True)
-with colT:
-    st.dataframe(df.tail(5), use_container_width=True)
-
-# Prepare lists
-numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-cat_cols = df.select_dtypes(include='object').columns.tolist()
-
-profile_log = []
-skipped_outlier_columns = []
-
-# ---------------------- Outlier Detection ------------------------
-st.markdown("<h3 style='color:{HEADING_COLOR};'>Step 2: Outlier Detection</h3>", unsafe_allow_html=True)
-
-UI_BLUE = "#0A81D1"
-
-skipped_reasons = {}
-no_outlier_cols = []
-
-for col in df.columns:
-
-    # -------- Step 1: Type filtering --------
-    if not pd.api.types.is_numeric_dtype(df[col]):
-        skipped_reasons[col] = "Non-numeric column"
-        continue
-
-    nunique = df[col].nunique(dropna=True)
-    total = len(df)
-
-    is_id = (nunique == total) and not pd.api.types.is_float_dtype(df[col])
-    is_binary = nunique == 2
-    is_low_cardinality = nunique < 10
-
-    if is_id:
-        skipped_reasons[col] = "Likely ID column (all values unique)"
-        continue
-    elif is_binary:
-        skipped_reasons[col] = "Binary column (only 2 unique values)"
-        continue
-    elif is_low_cardinality:
-        skipped_reasons[col] = "Low cardinality (categorical-like numeric)"
-        continue
-
-    # -------- Step 2: Outlier detection --------
-    col_data_clean = df[col].dropna()
-
-    if len(col_data_clean) == 0:
-        skipped_reasons[col] = "Column has only null values"
-        continue
-
-    q1, q3 = np.percentile(col_data_clean, [25, 75])
-    iqr = q3 - q1
-    lower, upper = q1 - 1.5 * iqr, q3 + 1.5 * iqr
-
-    outliers = df[(df[col] < lower) | (df[col] > upper)][col]
-    outlier_count = len(outliers)
-
-    if outlier_count == 0:
-        no_outlier_cols.append(col)
-        continue
-
-    # -------- Step 3: Show UI ONLY if outliers exist --------
-    outlier_pct = (outlier_count / len(col_data_clean)) * 100
-
-    st.markdown(
-    f"""
-    <div style="
-        background: #0A81D1;
-        color: white;
-        padding: 10px 16px;
-        border-radius: 8px;
-        margin-top: 18px;
-        margin-bottom: 6px;
-        font-size: 1.2em;
-        font-weight: 600;">
-        {col}
-    </div>
-    """,
-    unsafe_allow_html=True
-    )
-
-    st.markdown(
-        f"<span style='color:#0A81D1; font-weight:600;'>Outliers:</span> "
-        f"{outlier_count} ({outlier_pct:.2f}%)",
-        unsafe_allow_html=True
-    )
-
-    fig = px.box(df, y=col, title=f"Box: {col}", color_discrete_sequence=[UI_BLUE])
-    st.plotly_chart(fig, use_container_width=True)
-
-    # Store for PDF
-    st.session_state.charts_meta.append(("hist", f"Histogram: {col}", df[col]))
-
-    st.markdown(
-        f"<p style='color:#0A81D1; font-size:1.4em;'>How to handle outliers in <b>{col}</b>?</p>",
-        unsafe_allow_html=True
-    )
-
-    choice = st.radio(
-        "",
-        ["Keep all", "Remove", "Replace with median", "Replace with mean"],
-        key=f"out_{col}"
-    )
-
-    if choice == "Remove":
-        before = df.shape[0]
-        df = df[~((df[col] < lower) | (df[col] > upper)) | df[col].isna()]
-        removed = before - df.shape[0]
-        st.success(f"Removed {removed} rows with outliers in {col}")
-        profile_log.append(f"Outliers removed in {col}: {removed}")
-
-    elif choice == "Replace with median":
-        med = df[col].median()
-        df.loc[((df[col] < lower) | (df[col] > upper)), col] = med
-        st.info(f"Outliers replaced with median ({med}) in {col}")
-        profile_log.append(f"Outliers replaced with median in {col}")
-
-    elif choice == "Replace with mean":
-        mean_val = df[col].mean()
-
-        # Convert column to float before replacing
-        df[col] = df[col].astype(float)
-
-        df.loc[((df[col] < lower) | (df[col] > upper)), col] = mean_val
-        st.info(f"Outliers replaced with mean ({mean_val}) in {col}")
-        profile_log.append(f"Outliers replaced with mean in {col}")
-
-    else:
-        st.info("No outlier treatment applied.")
-        profile_log.append(f"Outliers kept in {col}")
-
-
-# ---------------- Skipped Columns Summary ----------------
-
-st.markdown(
-    """
-    <div style="
-        color:#0A81D1;
-        font-size:1.5em;
-        font-weight:600;
-        margin-top:20px;
-        margin-bottom:10px;">
-        Columns Skipped from Outlier Detection
-    </div>
-    """,
-    unsafe_allow_html=True
+st.set_page_config(
+    page_title="InsightForge AI",
+    page_icon="🔷",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-combined_skips = skipped_reasons.copy()
+with open("assets/style.css") as f:
+    st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
-for col in no_outlier_cols:
-    combined_skips[col] = "No outliers detected"
+# ── Sidebar ──
+with st.sidebar:
+    st.markdown("### 🔷 InsightForge AI")
+    st.divider()
+    if "df" in st.session_state:
+        st.success(f"📄 {st.session_state.filename}")
+        st.caption(f"{st.session_state.df.shape[0]:,} rows · {st.session_state.df.shape[1]} columns")
+    st.divider()
+    st.caption("Navigate using the pages above")
 
-if combined_skips:
+# ── Hero ──
+st.markdown("""
+<h1 style='font-size:32px;font-weight:500;margin-bottom:4px'>
+Insight<span style='color:#378ADD'>Forge</span> AI
+</h1>
+<p style='font-size:15px;opacity:0.5;margin-top:0'>
+Autonomous data analysis, cleaning, and ML — powered by AI
+</p>
+""", unsafe_allow_html=True)
 
-    # Create dataframe for display
-    skip_df = pd.DataFrame({
-        "Column": list(combined_skips.keys()),
-        "Reason": list(combined_skips.values())
-    })
+st.divider()
 
-    styled_df = skip_df.style \
-    .set_table_styles([
-        {'selector': 'thead th',
-         'props': [
-             ('background-color', '#0A81D1'),
-             ('color', 'white'),
-             ('font-weight', 'bold'),
-             ('text-align', 'center')
-         ]},
-        {'selector': 'tbody td',
-         'props': [
-             ('border', '1px solid #2A2E39'),
-             ('color', '#E6E6E6')
-         ]},
-        {'selector': 'tbody tr',
-         'props': [
-             ('background-color', '#111827')
-         ]}
-    ]) \
-    .set_properties(**{
-        'background-color': '#111827',
-        'color': '#E6E6E6'
-    })
+col1, col2 = st.columns([1.6, 1], gap="large")
 
-st.table(styled_df)
+with col1:
+    st.markdown("#### Upload your dataset")
+    uploaded = st.file_uploader(
+        "Upload",
+        type=["csv", "xlsx", "xls"],
+        label_visibility="collapsed"
+    )
 
-
-# ----------------------- Null Value Handling ---------------------
-st.markdown("<h3 style='color:{HEADING_COLOR};'>Step 3: Null Value Handling</h3>", unsafe_allow_html=True)
-missing_summary = []
-for col in df.columns:
-    miss = int(df[col].isna().sum())
-    if miss==0:
-        continue
-    pct = 100*miss/len(df)
-    missing_summary.append([col, miss, f"{pct:.2f}%"])
-
-if missing_summary:
-    st.dataframe(pd.DataFrame(missing_summary, columns=["Column","Nulls","Percentage"]), use_container_width=True)
-    for col, miss, pct in missing_summary:
-        col_dtype = df[col].dtype
-        st.markdown(
-            f"<p style='color:#0A81D1; font-size:1.4em;'>Null handling for <b>{col}</b> ({col_dtype})</p>",
-            unsafe_allow_html=True
-        )
-
-        if pd.api.types.is_numeric_dtype(col_dtype):
-            methods = ["Fill with mean","Fill with median","Fill with custom value","Drop rows with nulls"]
-        else:
-            methods = ["Fill with mode","Fill with 'Unknown'","Fill with custom value","Drop rows with nulls"]
-        method = st.selectbox(f"Null handling for {col}", options=methods, key=f"null_{col}")
-        if method == "Fill with mean":
-            val = df[col].mean()
-            df[col] = df[col].fillna(val)
-            profile_log.append(f"Filled nulls in {col} with mean ({val})")
-            st.info(f"Filled nulls in {col} with mean ({val})")
-        elif method == "Fill with median":
-            val = df[col].median()
-            df[col] = df[col].fillna(val)
-            profile_log.append(f"Filled nulls in {col} with median ({val})")
-            st.info(f"Filled nulls in {col} with median ({val})")
-        elif method == "Fill with mode":
-            val = df[col].mode().iloc[0]
-            df[col] = df[col].fillna(val)
-            profile_log.append(f"Filled nulls in {col} with mode ({val})")
-            st.info(f"Filled nulls in {col} with mode ({val})")
-        elif method == "Fill with 'Unknown'":
-            df[col] = df[col].fillna("Unknown")
-            profile_log.append(f"Filled nulls in {col} with 'Unknown'")
-            st.info(f"Filled nulls in {col} with 'Unknown'")
-        elif method == "Fill with custom value":
-            custom = st.text_input(f"Custom fill value for {col}", key=f"cust_{col}")
-            if custom != "":
-                ok, res = try_cast_fill(custom, col_dtype)
-                if ok:
-                    df[col] = df[col].fillna(res)
-                    profile_log.append(f"Filled nulls in {col} with custom value ({res})")
-                    st.info(f"Filled nulls in {col} with custom value ({res})")
-                else:
-                    st.error(res)
-        else:
-            before = df.shape[0]
-            df = df[df[col].notna()]
-            dropped = before - df.shape[0]
-            profile_log.append(f"Dropped {dropped} rows with nulls in {col}")
-            st.warning(f"Dropped {dropped} rows with nulls in {col}")
-else:
-    st.success("No nulls detected.")
-
-# ---------------------- Duplicate Handling -----------------------
-st.markdown("<h3 style='color:{HEADING_COLOR};'>Step 4: Duplicate Handling</h3>", unsafe_allow_html=True)
-dupes = original_df.duplicated(keep='first')
-num_dupes = int(dupes.sum())
-if num_dupes>0:
-    dupe_examples = original_df[dupes].head(5)
-    st.warning(f"Found {num_dupes} duplicate rows. They will be removed automatically. Showing up to 5 examples:")
-    st.dataframe(dupe_examples)
-    profile_log.append(f"Duplicates found: {num_dupes}. Examples saved to report.")
-    # remove duplicates from df
-    df = df.drop_duplicates()
-    profile_log.append(f"Duplicates removed: {num_dupes}")
-else:
-    st.info("No duplicates found.")
-
-# ------------------------- Visualizations -----------------------
-st.subheader("📊 Visualizations")
-# Reset charts_meta for this dataset
-st.session_state.charts_meta = []
-UI_BLUE = "#0A81D1"
-
-# Null bar
-nulls_after = [int(df[c].isnull().sum()) for c in df.columns]
-fig_nulls = px.bar(x=df.columns, y=nulls_after, labels={'x':'Column','y':'Nulls'}, title='Null values after cleaning', color_discrete_sequence=[UI_BLUE])
-st.plotly_chart(fig_nulls, use_container_width=True)
-st.session_state.charts_meta.append(("bar", "Null values after cleaning", pd.Series(dict(zip(df.columns, nulls_after)))))
-
-# Random numeric histograms
-random_numeric = list(df.select_dtypes(include=np.number).columns)
-random_numeric = random_numeric[:5]
-for col in random_numeric:
-    fig_hist = px.histogram(df, x=col, nbins=30, title=f"Histogram: {col}", marginal='box', color_discrete_sequence=[UI_BLUE])
-    st.plotly_chart(fig_hist, use_container_width=True)
-    st.session_state.charts_meta.append(("hist", f"Histogram: {col}", df[col]))
-
-# Top categories pie/bar
-random_categorical = list(df.select_dtypes(include='object').columns)[:5]
-for col in random_categorical:
-    vc = df[col].value_counts().head(10)
-    fig_pie = px.pie(values=vc.values, names=vc.index, title=f"Distribution: {col}")
-    st.plotly_chart(fig_pie, use_container_width=True)
-    st.session_state.charts_meta.append(("pie", f"Distribution: {col}", df[col]))
-
-# Correlation heatmap
-numeric_cols_now = df.select_dtypes(include=np.number).columns.tolist()
-if len(numeric_cols_now) > 1:
-    fig_corr = px.imshow(df[numeric_cols_now].corr(), text_auto=True, title='Correlation Heatmap')
-    st.plotly_chart(fig_corr, use_container_width=True)
-    st.session_state.charts_meta.append(("corr", "Correlation Heatmap", df[numeric_cols_now]))
-
-# Scatter pairs - pick up to 3 pairs
-pairs = []
-if len(numeric_cols_now) > 1:
-    for i in range(min(3, len(numeric_cols_now)-1)):
-        pairs.append((numeric_cols_now[i], numeric_cols_now[i+1]))
-
-for x_col, y_col in pairs:
-    fig_sc = px.scatter(df, x=x_col, y=y_col, title=f"Scatter: {y_col} vs {x_col}")
-    st.plotly_chart(fig_sc, use_container_width=True)
-    st.session_state.charts_meta.append(("scatter", f"Scatter: {y_col} vs {x_col}", df[[x_col, y_col]]))
-
-# Bar charts for categorical top categories
-for col in random_categorical:
-    vc = df[col].value_counts().head(10)
-    fig_bar = px.bar(vc, title=f"Top Categories in {col}", color_discrete_sequence=[UI_BLUE])
-    st.plotly_chart(fig_bar, use_container_width=True)
-    st.session_state.charts_meta.append(("bar", f"Top Categories in {col}", df[col]))
-
-# ------------------------- Summary & Export ---------------------
-st.markdown("<h3 style='color:{HEADING_COLOR};'>Summary & Exportable Report</h3>", unsafe_allow_html=True)
-report_txt = f"""
-*Basic Info*
-- Shape: {df.shape[0]} rows × {df.shape[1]} columns
-- Columns: {', '.join([f"{c} ({str(df[c].dtype)})" for c in df.columns])}
-- Unique value counts: {[int(df[c].nunique()) for c in df.columns]}
-
-*Cleaning Summary*
-"""
-report_txt += '\n'.join(["- "+s for s in profile_log])
-st.markdown(report_txt)
-
-# CSV Download
-st.download_button("⬇ Download Cleaned CSV", df.to_csv(index=False), "cleaned_data.csv")
-# Excel Download
-excel_buffer = io.BytesIO()
-df.to_excel(excel_buffer, index=False, engine='openpyxl')
-excel_buffer.seek(0)
-st.download_button(label="📒 Download Cleaned Excel", data=excel_buffer, file_name="cleaned_data.xlsx", mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-
-# PDF generation using Matplotlib charts stored in charts_meta
-if st.button("📄 Generate PDF Report"):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    # Add header text
-    for line in report_txt.strip().split('\n'):
-        pdf.multi_cell(0, 8, txt=line)
-    # Add duplicates info if any
-    if num_dupes>0:
-        pdf.ln(5)
-        pdf.set_font("Arial", 'B', 12)
-        pdf.cell(0, 8, f"Duplicates found: {num_dupes}", ln=True)
-    # Export charts
-    for chart_type, title, data in st.session_state.charts_meta:
+    if uploaded:
         try:
-            if chart_type == 'corr':
-                add_matplotlib_correlation_heatmap(data, pdf, title)
+            if uploaded.name.endswith(".csv"):
+                df = pd.read_csv(uploaded)
             else:
-                add_matplotlib_chart_to_pdf(data, chart_type, pdf, title)
+                df = pd.read_excel(uploaded)
+
+            st.session_state.df = df
+            st.session_state.filename = uploaded.name
+            st.session_state.chat_history = []
+            st.session_state.cleaning_log = []
+
+            st.success(f"✓ Loaded **{uploaded.name}** — {df.shape[0]:,} rows × {df.shape[1]} columns")
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("**Where would you like to start?**")
+
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.page_link("pages/1_Profiler.py", label="📊  Profile dataset", use_container_width=True)
+            with c2:
+                st.page_link("pages/2_Assistant.py", label="🤖  Ask AI", use_container_width=True)
+            with c3:
+                st.page_link("pages/3_Clean.py", label="🧹  Clean data", use_container_width=True)
+
         except Exception as e:
-            st.warning(f"Could not add chart '{title}' to PDF: {e}")
-    pdf_bytes = pdf.output(dest='S').encode('latin1')
-    st.download_button("📄 Download PDF Report", data=pdf_bytes, file_name='data_cleaning_report.pdf')
+            st.error(f"Could not read file: {e}")
 
-# HTML report
-with st.expander("🖥 Export Complete HTML Report"):
-    st.markdown(report_txt + "\n\n" + "\n".join([f"- {s}" for s in profile_log]), unsafe_allow_html=True)
-
-# ------------------------- Insights & Conclusion ----------------
-st.header("🔑 Insights")
-for col in df.select_dtypes(include=np.number).columns:
-    avg = df[col].mean()
-    st.markdown(f"Average **{col}**: <span style='color:{UI_BLUE}; font-weight:600'>{avg:,.2f}</span>", unsafe_allow_html=True)
-
-for col in df.select_dtypes(include='object').columns:
-    if df[col].dropna().shape[0]>0:
-        top_cat = df[col].mode()[0]
-        st.markdown(f"Top category in *{col}*: <span style='color:#29A746;font-weight:600'>{top_cat}</span>", unsafe_allow_html=True)
-
-st.success("*Conclusion:* Data is now ready for statistical analysis!")
-
-# ---------------------------- End --------------------------------
-st.markdown("<div style='text-align:center;padding:24px 0 6px;'><img src='https://static.streamlit.io/examples/dice.jpg' width=55 /><br><span style='font-size:1.2em;font-weight:500;color:#0A81D1'>Thanks for using the Refined Data Profiling & Cleaning App!</span></div>", unsafe_allow_html=True)
+with col2:
+    st.markdown("#### What InsightForge does")
+    features = [
+        ("📊", "Profiler", "Instant dataset overview & stats"),
+        ("🤖", "AI assistant", "Ask questions in natural language"),
+        ("🧹", "Clean & transform", "AI-detected issues & fixes"),
+        ("🧠", "ML studio", "Train & evaluate models"),
+        ("📄", "Reports", "Export full analysis as PDF"),
+    ]
+    for icon, title, desc in features:
+        st.markdown(f"""
+        <div style='display:flex;align-items:center;gap:12px;padding:9px 0;
+             border-bottom:0.5px solid rgba(128,128,128,0.1)'>
+          <span style='font-size:18px'>{icon}</span>
+          <div>
+            <div style='font-size:13px;font-weight:500'>{title}</div>
+            <div style='font-size:12px;opacity:0.5'>{desc}</div>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
