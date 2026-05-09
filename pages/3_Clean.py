@@ -150,5 +150,5 @@ with right:
             st.markdown(f"✅ {entry}")
 
     st.markdown("<br>", unsafe_allow_html=True)
-    st.page_link("pages/4_ML_Studio.py", label="🧠 Ready? Go to ML studio →",
+    st.page_link("pages/4_ML_Studio.py", label="🧠 Ready? Go to ML Studio →",
                  use_container_width=True)

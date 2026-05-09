@@ -164,7 +164,7 @@ st.markdown(f"""
 <div class="top-bar">
   <div style='display:flex;align-items:center;justify-content:space-between'>
     <div style='display:flex;align-items:center;gap:14px'>
-      <span style='font-size:19px;font-weight:500'>🤖 AI assistant</span>
+      <span style='font-size:19px;font-weight:500'>🤖 AI Assistant</span>
       <span style='font-size:12px;opacity:0.35'>Llama 3.3 70B</span>
     </div>
     <div style='border:0.5px solid rgba(55,138,221,0.3);border-radius:8px;

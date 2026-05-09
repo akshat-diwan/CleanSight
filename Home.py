@@ -210,13 +210,13 @@ with left:
 
             c1, c2, c3 = st.columns(3)
             with c1:
-                if st.button("📊  Profile dataset", use_container_width=True, key="nav_profile"):
+                if st.button("📊  Profile Dataset", use_container_width=True, key="nav_profile"):
                     st.switch_page("pages/1_Profiler.py")
             with c2:
                 if st.button("🤖  Ask AI", use_container_width=True, key="nav_assistant"):
                     st.switch_page("pages/2_Assistant.py")
             with c3:
-                if st.button("🧹  Clean data", use_container_width=True, key="nav_clean"):
+                if st.button("🧹  Clean Data", use_container_width=True, key="nav_clean"):
                     st.switch_page("pages/3_Clean.py")
 
         except Exception as e:

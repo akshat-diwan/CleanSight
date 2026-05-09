@@ -80,4 +80,4 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
-st.page_link("pages/5_Reports.py", label="📄 Generate report →")
+st.page_link("pages/5_Reports.py", label="📄 Generate Report →")
