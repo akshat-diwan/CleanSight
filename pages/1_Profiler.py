@@ -40,7 +40,7 @@ st.markdown("""
 # ── Sidebar ──
 with st.sidebar:
     st.image("assets/logo.svg")
-    st.caption("Data intelligence platform")
+    st.caption("Data Intelligence Platform")
     st.divider()
     if "df" in st.session_state:
         st.success(f"📄 {st.session_state.filename}")
@@ -228,7 +228,7 @@ with right:
     st.markdown("""
     <div style='font-size:18px;font-weight:700;color:#F0F0F0;
          letter-spacing:-0.3px;margin-bottom:14px'>
-      AI quick insights
+      AI Quick Insights
     </div>
     """, unsafe_allow_html=True)
 
@@ -253,7 +253,7 @@ with right:
     st.markdown("""
     <div style='font-size:18px;font-weight:700;color:#F0F0F0;
          letter-spacing:-0.3px;margin-bottom:14px'>
-      Numeric summary
+      Numeric Summary
     </div>
     """, unsafe_allow_html=True)
 
@@ -270,7 +270,7 @@ st.markdown("""
 <div style='border-top:0.5px solid rgba(255,255,255,0.06);margin:24px 0 20px 0'></div>
 <div style='font-size:18px;font-weight:700;color:#F0F0F0;
      letter-spacing:-0.3px;margin-bottom:14px'>
-  Data sample
+  Data Sample
   <span style='font-size:13px;font-weight:400;color:#8B8FA8;margin-left:10px'>
     first 5 rows
   </span>
