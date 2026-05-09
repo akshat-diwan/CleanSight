@@ -188,3 +188,39 @@ hr {
     background: #1A1D27 !important;
     border: 0.5px solid rgba(255,255,255,0.08) !important;
 }
+
+/* Sidebar branding — force colors with maximum specificity */
+[data-testid="stSidebar"] span.insight { color: #F0F0F0 !important; }
+[data-testid="stSidebar"] span.forge   { color: #378ADD !important; }
+
+/* ── Nav buttons ── */
+div[data-testid="stButton"] button {
+    background: rgba(55,138,221,0.1) !important;
+    border: 1px solid rgba(55,138,221,0.35) !important;
+    color: #60AAEE !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    padding: 12px 10px !important;
+    border-radius: 10px !important;
+    font-family: Inter, sans-serif !important;
+}
+div[data-testid="stButton"] button:hover {
+    background: rgba(55,138,221,0.2) !important;
+    color: #90CAFF !important;
+    border-color: #378ADD !important;
+}
+
+/* Hide sidebar collapse button and keyboard shortcut tooltip */
+[data-testid="stSidebarCollapseButton"] {
+    display: none !important;
+}
+[data-testid="stSidebarCollapsedControl"] {
+    display: none !important;
+}
+button[kind="header"] {
+    display: none !important;
+}
+/* Hide the keyboard shortcut label */
+[data-testid="stSidebar"] > div:first-child > div:first-child > button {
+    display: none !important;
+}

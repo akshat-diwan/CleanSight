@@ -5,7 +5,8 @@ with open("assets/style.css") as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 with st.sidebar:
-    st.markdown("### 🔷 InsightForge AI")
+    st.image("assets/logo.svg")
+    st.caption("Data Intelligence Platform")
     st.divider()
     if "df" in st.session_state:
         st.success(f"📄 {st.session_state.filename}")
