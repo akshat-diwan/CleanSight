@@ -13,11 +13,11 @@ with st.sidebar:
         st.caption(f"{st.session_state.df.shape[0]:,} rows · {st.session_state.df.shape[1]} columns")
     else:
         st.warning("No dataset loaded")
-        st.page_link("app.py", label="← Upload a dataset")
+        st.page_link("Home.py", label="← Upload a dataset")
 
 if "df" not in st.session_state:
     st.info("Please upload a dataset on the home page first.")
-    st.page_link("app.py", label="← Go to home")
+    st.page_link("Home.py", label="← Go to home")
     st.stop()
 
 df = st.session_state.df
