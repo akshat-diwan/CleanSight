@@ -54,18 +54,18 @@ html, body, [data-testid="stAppViewContainer"],
 
 .stButton > button:hover {
     background: #22263A !important;
-    border-color: rgba(55,138,221,0.4) !important;
-    color: #378ADD !important;
+    border-color: rgba(20,184,166,0.4) !important;
+    color: #14B8A6 !important;
 }
 
 .primary-btn > button {
-    background: #378ADD !important;
+    background: #14B8A6 !important;
     color: white !important;
     border: none !important;
 }
 
 .primary-btn > button:hover {
-    background: #185FA5 !important;
+    background: #0D9488 !important;
     color: white !important;
     border: none !important;
 }
@@ -111,20 +111,20 @@ hr {
 }
 
 [data-testid="stPageLink"] > a:hover {
-    border-color: rgba(55,138,221,0.4) !important;
-    color: #378ADD !important;
+    border-color: rgba(20,184,166,0.4) !important;
+    color: #14B8A6 !important;
 }
 
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: #0F1117; }
 ::-webkit-scrollbar-thumb { background: #2A2D3A; border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: #378ADD; }
+::-webkit-scrollbar-thumb:hover { background: #14B8A6; }
 
 /* ── File uploader ── */
 [data-testid="stFileUploader"] {
     background: #1A1D27 !important;
-    border: 0.5px dashed rgba(55,138,221,0.3) !important;
+    border: 0.5px dashed rgba(20,184,166,0.3) !important;
     border-radius: 10px !important;
 }
 
@@ -179,8 +179,8 @@ hr {
 
 /* ── Multiselect tags ── */
 [data-testid="stMultiSelect"] span[data-baseweb="tag"] {
-    background: rgba(55,138,221,0.2) !important;
-    color: #378ADD !important;
+    background: rgba(20,184,166,0.2) !important;
+    color: #14B8A6 !important;
 }
 
 /* ── Selectbox dropdown ── */
@@ -191,13 +191,13 @@ hr {
 
 /* Sidebar branding — force colors with maximum specificity */
 [data-testid="stSidebar"] span.insight { color: #F0F0F0 !important; }
-[data-testid="stSidebar"] span.forge   { color: #378ADD !important; }
+[data-testid="stSidebar"] span.forge   { color: #14B8A6 !important; }
 
 /* ── Nav buttons ── */
 div[data-testid="stButton"] button {
-    background: rgba(55,138,221,0.1) !important;
-    border: 1px solid rgba(55,138,221,0.35) !important;
-    color: #60AAEE !important;
+    background: rgba(20,184,166,0.1) !important;
+    border: 1px solid rgba(20,184,166,0.35) !important;
+    color: #5EEAD4 !important;
     font-size: 14px !important;
     font-weight: 600 !important;
     padding: 12px 10px !important;
@@ -205,9 +205,9 @@ div[data-testid="stButton"] button {
     font-family: Inter, sans-serif !important;
 }
 div[data-testid="stButton"] button:hover {
-    background: rgba(55,138,221,0.2) !important;
-    color: #90CAFF !important;
-    border-color: #378ADD !important;
+    background: rgba(20,184,166,0.2) !important;
+    color: #5EEAD4 !important;
+    border-color: #14B8A6 !important;
 }
 
 /* Hide sidebar collapse button and keyboard shortcut tooltip */
@@ -222,5 +222,10 @@ button[kind="header"] {
 }
 /* Hide the keyboard shortcut label */
 [data-testid="stSidebar"] > div:first-child > div:first-child > button {
+    display: none !important;
+}
+
+/* Hide only the keyboard shortcut tooltip on expanders */
+[data-testid="stExpander"] summary [data-testid="stExpanderToggleIcon"] ~ div {
     display: none !important;
 }

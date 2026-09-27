@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 
 st.set_page_config(
-    page_title="InsightForge AI",
+    page_title="CleanSight",
     page_icon="🔷",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -14,8 +14,12 @@ with open("assets/style.css") as f:
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-html, body, [class*="css"], [data-testid] {
+html, body, p, div, span, h1, h2, h3, h4, h5, h6, label, button, input, textarea, li, td, th {
     font-family: 'Inter', sans-serif !important;
+}
+[data-testid="stIconMaterial"], [data-testid="stExpanderIcon"],
+.material-symbols-rounded, .material-symbols-outlined, .material-icons {
+    font-family: 'Material Symbols Rounded', 'Material Symbols Outlined', 'Material Icons' !important;
 }
 
 /* Force sidebar open */
@@ -33,7 +37,7 @@ html, body, [class*="css"], [data-testid] {
 }
 [data-testid="stFileUploaderDropzone"] {
     background: #12151F !important;
-    border: 1.5px dashed rgba(55,138,221,0.3) !important;
+    border: 1.5px dashed rgba(20,184,166,0.3) !important;
     border-radius: 12px !important;
 }
 [data-testid="stFileUploaderDropzone"] * {
@@ -41,19 +45,19 @@ html, body, [class*="css"], [data-testid] {
     background: transparent !important;
 }
 [data-testid="stFileUploaderDropzone"] button {
-    background: rgba(55,138,221,0.15) !important;
-    color: #378ADD !important;
-    border: 0.5px solid rgba(55,138,221,0.35) !important;
+    background: rgba(20,184,166,0.15) !important;
+    color: #14B8A6 !important;
+    border: 0.5px solid rgba(20,184,166,0.35) !important;
     border-radius: 8px !important;
 }
 
 /* Page links */
 [data-testid="stPageLink"] a,
 [data-testid="stPageLink"] a p {
-    background: rgba(55,138,221,0.1) !important;
-    border: 1px solid rgba(55,138,221,0.35) !important;
+    background: rgba(20,184,166,0.1) !important;
+    border: 1px solid rgba(20,184,166,0.35) !important;
     border-radius: 10px !important;
-    color: #60AAEE !important;
+    color: #5EEAD4 !important;
     font-size: 14px !important;
     font-weight: 600 !important;
     text-align: center !important;
@@ -64,8 +68,8 @@ html, body, [class*="css"], [data-testid] {
 }
 [data-testid="stPageLink"] a:hover,
 [data-testid="stPageLink"] a:hover p {
-    background: rgba(55,138,221,0.2) !important;
-    color: #90CAFF !important;
+    background: rgba(20,184,166,0.2) !important;
+    color: #5EEAD4 !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -100,23 +104,23 @@ st.markdown("""
      margin-bottom:36px;font-family:Inter,sans-serif'>
 
   <div style='display:inline-flex;align-items:center;gap:7px;
-       background:rgba(55,138,221,0.08);
-       border:0.5px solid rgba(55,138,221,0.25);
+       background:rgba(20,184,166,0.08);
+       border:0.5px solid rgba(20,184,166,0.25);
        border-radius:99px;padding:5px 15px;
        font-size:12px;font-weight:500;
-       color:#378ADD;margin-bottom:22px;letter-spacing:0.05em'>
+       color:#14B8A6;margin-bottom:22px;letter-spacing:0.05em'>
     ✦ &nbsp;AI-Powered Data Analysis
   </div>
 
   <div style='font-size:50px;font-weight:800;line-height:1.1;
        letter-spacing:-1.5px;margin-bottom:18px'>
     <span style='color:#F0F0F0'>Your Personal Data Scientist, </span><br>
-    <span style='color:#F0F0F0'>Insight</span><span style='color:#378ADD'>Forge</span><span style='color:#F0F0F0'> AI </span>
+    <span style='color:#F0F0F0'>Clean</span><span style='color:#14B8A6'>Sight</span>
   </div>
 
   <div style='font-size:17px;color:#8B8FA8;line-height:1.7;
        font-weight:400;max-width:540px'>
-    InsightForge AI Profiles, Cleans, Models and Explains
+    CleanSight Profiles, Cleans, Models and Explains
     your Dataset, No Code Required.
   </div>
 </div>
@@ -149,9 +153,13 @@ with left:
                     df = pd.read_excel(uploaded)
 
             st.session_state.df = df
+            st.session_state.original_df = df.copy()
             st.session_state.filename = uploaded.name
             st.session_state.chat_history = []
             st.session_state.cleaning_log = []
+            st.session_state.inconsistency_findings = []
+            st.session_state.inconsistency_fixed = []
+            st.session_state.ai_summary = None
 
             num_cols = len(df.select_dtypes(include='number').columns)
             missing = int(df.isnull().sum().sum())
@@ -176,8 +184,8 @@ with left:
             st.markdown(f"""
             <div style='display:flex;flex-wrap:wrap;gap:8px;
                  margin:4px 0 22px 0;font-family:Inter,sans-serif'>
-              <div style='background:rgba(55,138,221,0.07);
-                   border:0.5px solid rgba(55,138,221,0.2);border-radius:8px;
+              <div style='background:rgba(20,184,166,0.07);
+                   border:0.5px solid rgba(20,184,166,0.2);border-radius:8px;
                    padding:9px 16px;font-size:13px;color:#8B8FA8;
                    display:inline-flex;align-items:center;gap:8px'>
                 📊&nbsp;<b style='color:#F0F0F0;font-size:15px'>{df.shape[0]:,}</b>&nbsp;rows
@@ -188,8 +196,8 @@ with left:
                    display:inline-flex;align-items:center;gap:8px'>
                 ▦&nbsp;<b style='color:#F0F0F0;font-size:15px'>{df.shape[1]}</b>&nbsp;columns
               </div>
-              <div style='background:rgba(55,138,221,0.07);
-                   border:0.5px solid rgba(55,138,221,0.2);border-radius:8px;
+              <div style='background:rgba(20,184,166,0.07);
+                   border:0.5px solid rgba(20,184,166,0.2);border-radius:8px;
                    padding:9px 16px;font-size:13px;color:#8B8FA8;
                    display:inline-flex;align-items:center;gap:8px'>
                 🔢&nbsp;<b style='color:#F0F0F0;font-size:15px'>{num_cols}</b>&nbsp;numeric
@@ -235,11 +243,11 @@ with right:
          border-radius:16px;padding:26px;font-family:Inter,sans-serif'>
 
       <div style='font-size:16px;font-weight:600;color:#F0F0F0;margin-bottom:20px'>
-        What InsightForge does
+        What CleanSight does
       </div>
 
       <div style='display:flex;align-items:center;gap:14px;padding:11px 0;border-bottom:0.5px solid rgba(255,255,255,0.05)'>
-        <div style='width:40px;height:40px;border-radius:10px;background:rgba(55,138,221,0.15);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0'>📊</div>
+        <div style='width:40px;height:40px;border-radius:10px;background:rgba(20,184,166,0.15);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0'>📊</div>
         <div><div style='font-size:14px;font-weight:600;color:#F0F0F0'>Data profiler</div>
         <div style='font-size:12px;color:#8B8FA8;margin-top:2px'>Column types, stats & data quality overview</div></div>
       </div>

@@ -1,7 +1,7 @@
 import streamlit as st
 from groq import Groq
 
-st.set_page_config(page_title="AI Assistant · InsightForge AI", layout="wide")
+st.set_page_config(page_title="AI Assistant · CleanSight", layout="wide")
 with open("assets/style.css") as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
@@ -36,8 +36,8 @@ st.markdown("""
     margin: 10px 0;
 }
 .chat-user .bubble {
-    background: rgba(55,138,221,0.13);
-    border: 0.5px solid rgba(55,138,221,0.25);
+    background: rgba(20,184,166,0.13);
+    border: 0.5px solid rgba(20,184,166,0.25);
     border-radius: 16px 16px 4px 16px;
     padding: 10px 15px;
     max-width: 68%;
@@ -57,8 +57,8 @@ st.markdown("""
     width: 28px;
     height: 28px;
     border-radius: 50%;
-    background: rgba(55,138,221,0.1);
-    color: #378ADD;
+    background: rgba(20,184,166,0.1);
+    color: #14B8A6;
     font-size: 11px;
     font-weight: 600;
     display: flex;
@@ -66,7 +66,7 @@ st.markdown("""
     justify-content: center;
     flex-shrink: 0;
     margin-top: 4px;
-    border: 0.5px solid rgba(55,138,221,0.2);
+    border: 0.5px solid rgba(20,184,166,0.2);
 }
 .ai-bubble-wrap {
     max-width: 72%;
@@ -133,7 +133,7 @@ def build_context(df):
     # Missing values — only columns that have them
     missing = {c: int(v) for c, v in df.isnull().sum().items() if v > 0}
 
-    return f"""You are an expert data analyst assistant inside InsightForge AI.
+    return f"""You are an expert data analyst assistant inside CleanSight.
 
 Dataset profile:
 - Shape: {df.shape[0]:,} rows × {df.shape[1]} columns
@@ -153,7 +153,7 @@ def get_groq_response(df, history):
     messages = [{"role": "system", "content": build_context(df)}]
     messages += history
     resp = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-20b",
         messages=messages,
         max_tokens=1024
     )
@@ -167,9 +167,9 @@ st.markdown(f"""
       <span style='font-size:19px;font-weight:500'>🤖 AI Assistant</span>
       <span style='font-size:12px;opacity:0.35'>Llama 3.3 70B</span>
     </div>
-    <div style='border:0.5px solid rgba(55,138,221,0.3);border-radius:8px;
-         padding:5px 12px;font-size:12px;background:rgba(55,138,221,0.07);
-         color:#378ADD'>
+    <div style='border:0.5px solid rgba(20,184,166,0.3);border-radius:8px;
+         padding:5px 12px;font-size:12px;background:rgba(20,184,166,0.07);
+         color:#14B8A6'>
       📋 {df.shape[0]:,} rows · {df.shape[1]} cols · {st.session_state.filename}
     </div>
   </div>
