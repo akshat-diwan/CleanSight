@@ -109,7 +109,7 @@ df = st.session_state.df
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
-GROQ_API_KEY = "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"
+GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 
 def build_context(df):
     # Numeric summary — mean and std only, max 10 cols
