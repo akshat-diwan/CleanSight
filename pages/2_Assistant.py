@@ -165,7 +165,7 @@ st.markdown(f"""
   <div style='display:flex;align-items:center;justify-content:space-between'>
     <div style='display:flex;align-items:center;gap:14px'>
       <span style='font-size:19px;font-weight:500'>🤖 AI Assistant</span>
-      <span style='font-size:12px;opacity:0.35'>Llama 3.3 70B</span>
+      <span style='font-size:12px;opacity:0.35'>GPT OSS 20B</span>
     </div>
     <div style='border:0.5px solid rgba(20,184,166,0.3);border-radius:8px;
          padding:5px 12px;font-size:12px;background:rgba(20,184,166,0.07);
