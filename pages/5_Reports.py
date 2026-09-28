@@ -49,7 +49,7 @@ df = st.session_state.df
 original_df = st.session_state.get("original_df", df)
 cleaning_log = st.session_state.get("cleaning_log", [])
 
-GROQ_API_KEY = "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"
+GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 GROQ_MODEL = "openai/gpt-oss-20b"
 
 st.markdown("<h2 style='font-weight:500'>📄 Reports</h2>", unsafe_allow_html=True)
