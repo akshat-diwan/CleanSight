@@ -1,6 +1,12 @@
+import html as html_lib
 import streamlit as st
 import pandas as pd
 import numpy as np
+
+try:
+    from groq import Groq
+except ImportError:
+    Groq = None
 
 st.set_page_config(page_title="Profiler · CleanSight", layout="wide")
 with open("assets/style.css") as f:
@@ -132,6 +138,145 @@ TYPE_COLORS = {
     "datetime": ("rgba(29,158,117,0.12)",  "#1D9E75"),
 }
 
+# ── AI Quick Insights helpers ──
+def get_api_key():
+    try:
+        return st.secrets["GROQ_API_KEY"]
+    except Exception:
+        return None
+
+
+def insight_facts(df):
+    """Verified facts from the data - used for the AI prompt and the rule-based fallback."""
+    rows, cols = df.shape
+    miss = df.isnull().sum()
+    miss = miss[miss > 0].sort_values(ascending=False)
+    facts = {
+        "rows": rows, "cols": cols,
+        "completeness": 100 * (1 - int(miss.sum()) / max(rows * cols, 1)),
+        "dupes": int(df.duplicated().sum()),
+        "missing_cols": len(miss),
+        "missing": [(c, int(v), 100 * v / max(rows, 1)) for c, v in miss.head(4).items()],
+    }
+
+    num = df.select_dtypes(include="number")
+    usable = []
+    for c in num.columns:
+        n = num[c].nunique(dropna=True)
+        is_id = n == rows and str(num[c].dtype).startswith("int")
+        if n > 2 and not is_id:
+            usable.append(c)
+
+    pairs = []
+    if len(usable) >= 2:
+        corr = num[usable].corr()
+        for i, a in enumerate(usable):
+            for b in usable[i + 1:]:
+                r = corr.loc[a, b]
+                if pd.notna(r) and abs(r) >= 0.3:
+                    pairs.append((a, b, float(r)))
+    facts["corr"] = sorted(pairs, key=lambda t: abs(t[2]), reverse=True)[:3]
+
+    skewed, outliers = [], []
+    for c in usable:
+        s = num[c].dropna()
+        if len(s) > 10:
+            sk = s.skew()
+            if abs(sk) > 1:
+                skewed.append((c, float(sk)))
+            if s.nunique() >= 10:
+                q1, q3 = s.quantile(0.25), s.quantile(0.75)
+                iqr = q3 - q1
+                if iqr > 0:
+                    n_out = int(((s < q1 - 1.5 * iqr) | (s > q3 + 1.5 * iqr)).sum())
+                    if n_out > 0:
+                        outliers.append((c, n_out, 100 * n_out / rows))
+    facts["skewed"] = sorted(skewed, key=lambda t: abs(t[1]), reverse=True)[:2]
+    facts["outliers"] = sorted(outliers, key=lambda t: t[1], reverse=True)[:2]
+
+    imbalance = []
+    for c in df.columns:
+        n = df[c].nunique(dropna=True)
+        if 2 <= n <= 3:
+            vc = df[c].value_counts(normalize=True)
+            if vc.iloc[0] >= 0.7:
+                imbalance.append((c, str(vc.index[0]), float(vc.iloc[0])))
+    facts["imbalance"] = sorted(imbalance, key=lambda t: t[2], reverse=True)[:2]
+    return facts
+
+
+def facts_to_text(f):
+    lines = [
+        f"Rows: {f['rows']:,}; Columns: {f['cols']}",
+        f"Completeness: {f['completeness']:.1f}%; Duplicate rows: {f['dupes']:,}",
+        "Missing values: " + ("; ".join(f"{c} {n:,} ({p:.1f}%)" for c, n, p in f["missing"]) or "none")
+        + (f" (+ {f['missing_cols'] - len(f['missing'])} more columns)" if f["missing_cols"] > len(f["missing"]) else ""),
+        "IQR outliers: " + ("; ".join(f"{c} {n:,} rows ({p:.1f}%)" for c, n, p in f["outliers"]) or "none notable"),
+        "Skewed columns: " + ("; ".join(f"{c} (skew {s:.1f})" for c, s in f["skewed"]) or "none notable"),
+        "Strongest correlations: " + ("; ".join(f"{a} vs {b} r={r:.2f}" for a, b, r in f["corr"]) or "none above 0.3"),
+        "Imbalanced columns: " + ("; ".join(f"{c} '{v}' = {s:.0%}" for c, v, s in f["imbalance"]) or "none"),
+    ]
+    return "\n".join(lines)
+
+
+def rule_based_insights(f):
+    out = []
+    dup_txt = f"{f['dupes']:,} duplicate rows" if f["dupes"] else "no duplicate rows"
+    out.append(f"📋 {f['rows']:,} rows × {f['cols']} columns — {f['completeness']:.1f}% complete with {dup_txt}.")
+    if f["missing"]:
+        c, n, p = f["missing"][0]
+        out.append(f"🕳️ {c} has the most missing values ({n:,}, {p:.1f}%); {f['missing_cols']} column(s) are affected in total.")
+    else:
+        out.append("✅ No missing values detected in any column.")
+    if f["outliers"]:
+        c, n, p = f["outliers"][0]
+        out.append(f"📌 {c} has {n:,} IQR outliers ({p:.1f}% of rows) — worth reviewing on the Clean page.")
+    elif f["skewed"]:
+        c, s = f["skewed"][0]
+        out.append(f"📈 {c} is strongly skewed (skew {s:.1f}) — the median may describe it better than the mean.")
+    if f["corr"]:
+        a, b, r = f["corr"][0]
+        direction = "positively" if r > 0 else "negatively"
+        out.append(f"🔗 {a} and {b} are {direction} correlated (r = {r:.2f}).")
+    if f["imbalance"]:
+        c, v, s = f["imbalance"][0]
+        out.append(f"⚖️ {c} is imbalanced — '{v}' makes up {s:.0%} of its values.")
+    needs_clean = bool(f["missing"] or f["outliers"] or f["dupes"])
+    next_step = ("➡️ Next step: head to Clean to fix the flagged issues." if needs_clean
+                 else "➡️ Next step: explore relationships on the Visualize page.")
+    return out[:4] + [next_step]
+
+
+def ai_insights(facts_text):
+    """Returns a list of insight strings, or None if the AI is unavailable or the reply is unusable."""
+    key = get_api_key()
+    if not key or Groq is None:
+        return None
+    prompt = f"""You are a data analyst writing quick insights for a dataset profiler.
+Use ONLY the facts below. Do not invent numbers.
+Write exactly 4 insights, one per line, each starting with one relevant emoji and at most 22 words.
+Cover, where the facts allow: overall data quality, the most important missing-value or outlier issue, the most notable relationship or imbalance, and one concrete next step.
+No headers, no markdown, no extra text.
+
+Facts:
+{facts_text}"""
+    kwargs = dict(model="openai/gpt-oss-20b", messages=[{"role": "user", "content": prompt}], max_tokens=1500)
+    try:
+        client = Groq(api_key=key)
+        try:
+            resp = client.chat.completions.create(reasoning_effort="low", **kwargs)
+        except Exception:
+            resp = client.chat.completions.create(**kwargs)
+        choice = resp.choices[0]
+        if choice.finish_reason == "length":
+            return None
+        lines = [l.strip().lstrip("-•*0123456789.) ").strip() for l in (choice.message.content or "").splitlines()]
+        lines = [l for l in lines if len(l) > 15]
+        return lines[:5] if len(lines) >= 3 else None
+    except Exception:
+        return None
+
+
 if "profiler_selected_col" not in st.session_state:
     st.session_state.profiler_selected_col = "__overview__"
 
@@ -173,22 +318,43 @@ with right:
     selected = st.session_state.profiler_selected_col
 
     if selected == "__overview__":
-        st.markdown("""
-        <div style='font-size:18px;font-weight:700;color:#F0F0F0;
-             letter-spacing:-0.3px;margin-bottom:14px'>✨ AI Quick Insights</div>
-        """, unsafe_allow_html=True)
-        st.markdown("""
-        <div style='background:rgba(20,184,166,0.06);border:0.5px solid rgba(20,184,166,0.18);
-             border-radius:12px;padding:16px 18px;line-height:1.9;margin-bottom:20px'>
-          <div style='font-size:13px;color:#8B8FA8'>
-            Will appear here once backend is connected.<br><br>
-            · Missing value explanations<br>
-            · Correlation highlights<br>
-            · Class imbalance warnings<br>
-            · Suggested next steps
-          </div>
-        </div>
-        """, unsafe_allow_html=True)
+        sig = (st.session_state.filename, df.shape, total_missing, total_dupes)
+        cache = st.session_state.get("profiler_insights")
+
+        hl, hr = st.columns([3, 1])
+        with hl:
+            st.markdown(
+                "<div style='font-size:18px;font-weight:700;color:#F0F0F0;"
+                "letter-spacing:-0.3px;margin-bottom:6px'>✨ AI Quick Insights</div>",
+                unsafe_allow_html=True)
+        with hr:
+            regen = st.button("↻ Regenerate", key="regen_insights", use_container_width=True)
+
+        if regen or not cache or cache["sig"] != sig:
+            facts = insight_facts(df)
+            with st.spinner("Analyzing your dataset..."):
+                items = ai_insights(facts_to_text(facts))
+                source = "ai"
+                if not items:
+                    items = rule_based_insights(facts)
+                    source = "rules"
+            cache = {"sig": sig, "items": items, "source": source}
+            st.session_state.profiler_insights = cache
+
+        rows_html = "".join(
+            "<div style='padding:9px 0;border-bottom:0.5px solid rgba(255,255,255,0.05);"
+            "font-size:13.5px;color:#D5D8E3;line-height:1.6'>" + html_lib.escape(item) + "</div>"
+            for item in cache["items"]
+        )
+        footer = ("Generated by GPT-OSS 20B from your dataset's computed statistics"
+                  if cache["source"] == "ai"
+                  else "Rule-based insights computed from your data (AI summary unavailable right now)")
+        st.markdown(
+            "<div style='background:rgba(20,184,166,0.06);border:0.5px solid rgba(20,184,166,0.18);"
+            "border-radius:12px;padding:8px 18px 12px 18px;margin-bottom:22px'>"
+            + rows_html +
+            "<div style='font-size:11px;color:#6B7089;margin-top:10px'>" + footer + "</div></div>",
+            unsafe_allow_html=True)
 
         st.markdown("""
         <div style='font-size:18px;font-weight:700;color:#F0F0F0;
