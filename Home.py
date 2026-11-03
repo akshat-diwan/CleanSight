@@ -277,6 +277,10 @@ with left:
                 st.session_state.inconsistency_findings = []
                 st.session_state.inconsistency_fixed = []
                 st.session_state.ai_summary = None
+                st.session_state.custom_charts = []
+                st.session_state.last_chart_spec = None
+                st.session_state.pdf_report = None
+                st.session_state.profiler_insights = None
 
             current = st.session_state.df
             num_cols = len(current.select_dtypes(include="number").columns)

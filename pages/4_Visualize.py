@@ -3,6 +3,12 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.express as px
+import os
+import sys
+
+# project root (where chart_utils.py lives) must be importable from pages/
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import chart_utils as cu
 
 st.set_page_config(page_title="Visualize · CleanSight", layout="wide")
 with open("assets/style.css") as f:
@@ -70,7 +76,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-cat_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
+cat_cols = [c for c in df.columns if cu.is_text_col(df[c])]
 datetime_cols = df.select_dtypes(include="datetime").columns.tolist()
 
 # ================================================================
@@ -123,89 +129,86 @@ with b2:
 
 generate = st.button("✨ Generate Chart", key="generate_chart", use_container_width=False)
 
+# What the current selection describes (None until every needed column is picked)
+spec = None
+if chart_type in ("Histogram", "Bar Chart", "Pie Chart") and col:
+    spec = {"type": chart_type, "col": col}
+elif chart_type == "Box Plot" and col:
+    spec = {"type": chart_type, "col": col, "group": None if group_col == "None" else group_col}
+elif chart_type in ("Scatter Plot", "Line Chart") and x_col and y_col:
+    spec = {"type": chart_type, "x": x_col, "y": y_col}
+elif chart_type == "Correlation Heatmap" and len(cols) > 1:
+    spec = {"type": chart_type, "cols": list(cols)}
+
+
+def plotly_figure(data, sp):
+    """Interactive version of a chart spec (the PDF uses the matplotlib version in chart_utils)."""
+    t = sp["type"]
+    title = cu.spec_title(sp)
+    if t == "Histogram":
+        return px.histogram(data, x=sp["col"], nbins=30, marginal="box", title=title,
+                            color_discrete_sequence=[CHART_COLOR])
+    if t == "Bar Chart":
+        counts = data[sp["col"]].dropna().astype(str).value_counts().head(15)
+        return px.bar(x=counts.index.astype(str), y=counts.values, labels={"x": sp["col"], "y": "Count"},
+                      title=title, color_discrete_sequence=[CHART_COLOR])
+    if t == "Pie Chart":
+        counts = data[sp["col"]].dropna().astype(str).value_counts().head(10)
+        return px.pie(values=counts.values, names=counts.index, title=title)
+    if t == "Box Plot":
+        return px.box(data, y=sp["col"], x=sp.get("group"), title=title, color_discrete_sequence=[CHART_COLOR])
+    if t == "Scatter Plot":
+        return px.scatter(data, x=sp["x"], y=sp["y"], title=title, color_discrete_sequence=[CHART_COLOR])
+    if t == "Line Chart":
+        plot_df = data[[sp["x"], sp["y"]]].dropna().sort_values(sp["x"])
+        return px.line(plot_df, x=sp["x"], y=sp["y"], title=title, color_discrete_sequence=[CHART_COLOR])
+    return px.imshow(data[sp["cols"]].corr(), text_auto=".2f", title=title,
+                     color_continuous_scale=["#1A1D27", CHART_COLOR])
+
+
 if generate:
+    if spec is None or not cu.spec_is_valid(df, spec):
+        st.warning("Select all required columns for this chart type first.")
+    else:
+        st.session_state.last_chart_spec = spec
+
+if "custom_charts" not in st.session_state:
+    st.session_state.custom_charts = []
+saved_charts = st.session_state.custom_charts
+
+last_spec = st.session_state.get("last_chart_spec")
+if last_spec and cu.spec_is_valid(df, last_spec):
     try:
-        if chart_type == "Histogram" and col:
-            fig = px.histogram(df, x=col, nbins=30, marginal="box",
-                                title=f"Histogram: {col}", color_discrete_sequence=[CHART_COLOR])
-            values = df[col].dropna()
-            skew = values.skew()
-            shape = "right-skewed (a long tail of high values)" if skew > 0.5 else \
-                    "left-skewed (a long tail of low values)" if skew < -0.5 else "roughly symmetric"
-            explanation = (f"**{col}** is {shape}, with a mean of {values.mean():.2f} "
-                            f"and a median of {values.median():.2f}.")
-
-        elif chart_type == "Bar Chart" and col:
-            counts = df[col].astype(str).value_counts().head(15)
-            fig = px.bar(x=counts.index.astype(str), y=counts.values,
-                         labels={"x": col, "y": "Count"}, title=f"Top Values: {col}",
-                         color_discrete_sequence=[CHART_COLOR])
-            top_share = counts.iloc[0] / len(df.dropna(subset=[col])) * 100
-            explanation = (f"**\"{counts.index[0]}\"** is the most common value in **{col}**, "
-                            f"making up {top_share:.1f}% of non-null rows.")
-
-        elif chart_type == "Pie Chart" and col:
-            counts = df[col].value_counts().head(10)
-            fig = px.pie(values=counts.values, names=counts.index, title=f"Distribution: {col}")
-            top_share = counts.iloc[0] / counts.sum() * 100
-            explanation = (f"**{col}** has {df[col].nunique()} distinct values; "
-                            f"**\"{counts.index[0]}\"** accounts for {top_share:.1f}% of the top-10 shown.")
-
-        elif chart_type == "Box Plot" and col:
-            group = None if group_col == "None" else group_col
-            fig = px.box(df, y=col, x=group, title=f"Box Plot: {col}" + (f" by {group}" if group else ""),
-                         color_discrete_sequence=[CHART_COLOR])
-            values = df[col].dropna()
-            q1, q3 = values.quantile(0.25), values.quantile(0.75)
-            iqr = q3 - q1
-            outliers = int(((values < q1 - 1.5 * iqr) | (values > q3 + 1.5 * iqr)).sum())
-            explanation = (f"**{col}** has a median of {values.median():.2f}, "
-                            f"with {outliers} values falling outside the IQR whiskers (outliers).")
-
-        elif chart_type == "Scatter Plot" and x_col and y_col:
-            fig = px.scatter(df, x=x_col, y=y_col, title=f"Scatter: {y_col} vs {x_col}",
-                              color_discrete_sequence=[CHART_COLOR])
-            r = df[[x_col, y_col]].corr().iloc[0, 1]
-            strength = "strong" if abs(r) > 0.7 else "moderate" if abs(r) > 0.3 else "weak"
-            direction = "positive" if r > 0 else "negative"
-            explanation = (f"**{x_col}** and **{y_col}** show a {strength} {direction} relationship "
-                            f"(correlation r = {r:.2f}).")
-
-        elif chart_type == "Line Chart" and x_col and y_col:
-            plot_df = df[[x_col, y_col]].dropna().sort_values(x_col)
-            fig = px.line(plot_df, x=x_col, y=y_col, title=f"{y_col} over {x_col}",
-                          color_discrete_sequence=[CHART_COLOR])
-            if len(plot_df) > 2:
-                slope = np.polyfit(range(len(plot_df)), plot_df[y_col], 1)[0]
-                trend = "an upward trend" if slope > 0 else "a downward trend" if slope < 0 else "no clear trend"
-                explanation = f"**{y_col}** shows {trend} as **{x_col}** increases."
-            else:
-                explanation = f"Showing **{y_col}** across **{x_col}**."
-
-        elif chart_type == "Correlation Heatmap" and len(cols) > 1:
-            corr = df[cols].corr()
-            fig = px.imshow(corr, text_auto=".2f", title="Correlation Heatmap",
-                             color_continuous_scale=["#1A1D27", CHART_COLOR])
-            abs_corr = corr.abs()
-            np.fill_diagonal(abs_corr.values, 0)
-            max_pair = abs_corr.stack().idxmax()
-            max_val = corr.loc[max_pair]
-            explanation = (f"The strongest relationship is between **{max_pair[0]}** and **{max_pair[1]}** "
-                            f"(r = {max_val:.2f}).")
-        else:
-            st.warning("Select all required columns for this chart type first.")
-    except Exception as e:
-        st.error(f"Couldn't build that chart: {e}")
-
-if fig is not None:
-    st.plotly_chart(style_fig(fig), use_container_width=True)
-    if explanation:
+        st.plotly_chart(style_fig(plotly_figure(df, last_spec)), use_container_width=True)
         st.markdown(f"""
         <div style='background:rgba(20,184,166,0.06);border:0.5px solid rgba(20,184,166,0.18);
              border-radius:10px;padding:12px 16px;font-size:13px;color:#B8BCCC;line-height:1.6'>
-          💡 {explanation}
+          💡 {cu.describe_chart(df, last_spec)}
         </div>
         """, unsafe_allow_html=True)
+        already = cu.spec_key(last_spec) in {cu.spec_key(s) for s in saved_charts}
+        if already:
+            st.success("✓ This chart will be included in your PDF report.")
+        elif st.button("➕ Add this chart to my report", key="add_chart_to_report"):
+            saved_charts.append(last_spec)
+            st.rerun()
+    except Exception as e:
+        st.error(f"Couldn't build that chart: {e}")
+
+if saved_charts:
+    st.markdown(f"##### 📌 Your custom charts in the report ({len(saved_charts)})")
+    for i, sp in enumerate(list(saved_charts)):
+        r1, r2 = st.columns([8, 1])
+        with r1:
+            st.markdown(
+                f"<div style='background:#1A1D27;border:0.5px solid rgba(255,255,255,0.07);border-left:3px solid #14B8A6;"
+                f"border-radius:8px;padding:8px 14px;font-size:13px;color:#E4E6EE'>{i + 1}. {cu.spec_title(sp)}</div>",
+                unsafe_allow_html=True)
+        with r2:
+            if st.button("✕", key=f"rm_chart_{i}", help="Remove from report"):
+                saved_charts.pop(i)
+                st.rerun()
+    st.caption("The automatic insights below are also included in the report. Generate it from the Reports page.")
 
 st.markdown("<div style='border-top:0.5px solid rgba(255,255,255,0.06);margin:32px 0 20px 0'></div>",
             unsafe_allow_html=True)

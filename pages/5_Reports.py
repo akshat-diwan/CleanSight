@@ -1,5 +1,9 @@
 import html as html_lib
+import json
+import os
 import re
+import sys
+import tempfile
 from datetime import datetime
 
 import streamlit as st
@@ -10,6 +14,13 @@ try:
     from groq import Groq
 except ImportError:
     Groq = None
+
+# chart_utils.py (matplotlib charts for the PDF) lives next to Home.py
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+try:
+    import chart_utils as cu
+except Exception:  # matplotlib missing etc. - the report still works, just without charts
+    cu = None
 
 st.set_page_config(page_title="Reports · CleanSight", layout="wide")
 with open("assets/style.css") as f:
@@ -296,28 +307,81 @@ Numeric summary:
 Cleaning actions already applied:
 {log_text}
 
-Write the summary in EXACTLY these four sections, each starting with its heading in capitals followed by a colon:
-OVERVIEW: 2-3 sentences on size and overall data quality.
-CLEANING APPLIED: 2-3 sentences on what was cleaned and why it mattered (say so if nothing was cleaned).
-REMAINING RISKS: 2-3 sentences on leftover missing data or other concerns.
-RECOMMENDATIONS: exactly 3 bullets, each on its own line starting with "- ".
-Use only the figures given. No markdown symbols (no **, no #), no code. Keep the whole thing under 200 words."""
+Reply with ONE JSON object and nothing else, using exactly these keys:
+{{"overview": "2 sentences on size and overall data quality (max 45 words)",
+ "cleaning": "2 sentences on what was cleaned and why it mattered; say so if nothing was cleaned (max 45 words)",
+ "risks": "2 sentences on leftover missing data or other concerns (max 45 words)",
+ "recommendations": ["tip 1 (max 18 words)", "tip 2 (max 18 words)", "tip 3 (max 18 words)"]}}
+Use only the figures given. Plain text inside the strings: no markdown symbols, no code."""
+
+
+def _lines_from_value(value):
+    """JSON value (string or list) -> [(is_bullet, text), ...]."""
+    if isinstance(value, list):
+        return [(True, re.sub(r"[*#`]+", "", str(v)).strip()) for v in value if str(v).strip()]
+    text = re.sub(r"[*#`]+", "", str(value or "")).strip()
+    return [(False, text)] if text else []
 
 
 def parse_summary(text):
-    """Split a summary into [(key, [(is_bullet, text), ...]), ...]; None if it isn't structured."""
+    """Return [(key, [(is_bullet, text), ...]), ...] in display order, or None if unstructured.
+
+    1) JSON object with overview / cleaning / risks / recommendations (what the prompt asks for)
+    2) fallback: ALL-CAPS "HEADING:" blocks, matched by keyword (so a typo like
+       'REMEMBERING RISKS' still lands in the right card) or by position when there are exactly four.
+    """
     if not text:
         return None
+
+    # 1) JSON
+    m = re.search(r"\{.*\}", text, flags=re.DOTALL)
+    if m:
+        try:
+            data = json.loads(m.group(0))
+            if isinstance(data, dict):
+                aliases = {"OVERVIEW": ("overview", "summary"), "CLEANING": ("cleaning", "cleaning_applied", "cleaning applied"),
+                           "RISKS": ("risks", "remaining_risks", "remaining risks"),
+                           "RECOMMENDATIONS": ("recommendations", "recommendation", "tips")}
+                found = {}
+                for key, names in aliases.items():
+                    for name in names:
+                        if name in data:
+                            lines = _lines_from_value(data[name])
+                            if lines:
+                                found[key] = lines
+                            break
+                if len(found) >= 2:
+                    return [(k, found[k]) for k, *_ in SUMMARY_SECTIONS if k in found]
+        except Exception:
+            pass
+
+    # 2) heading-based text
     plain = re.sub(r"[*#`]+", "", text)
-    pattern = r"(?im)^[ \t]*(OVERVIEW|CLEANING(?: APPLIED)?|(?:REMAINING )?RISKS?|RECOMMENDATIONS?)[ \t]*:?[ \t]*"
+    pattern = r"(?m)^[ \t]*([A-Z][A-Z &/]{3,30}?)[ \t]*:[ \t]*"
     parts = re.split(pattern, plain)
+    heads = [parts[i].strip() for i in range(1, len(parts) - 1, 2)]
+    bodies = [parts[i + 1] for i in range(1, len(parts) - 1, 2)]
+    if len(heads) < 2:
+        return None
+
+    def keyword(head):
+        h = head.upper()
+        if "OVER" in h or "SUMMARY" in h: return "OVERVIEW"
+        if "CLEAN" in h: return "CLEANING"
+        if "RISK" in h or "CONCERN" in h: return "RISKS"
+        if "RECOMMEND" in h or "NEXT" in h or "TIP" in h: return "RECOMMENDATIONS"
+        return None
+
+    keys = [keyword(h) for h in heads]
+    order = [k for k, *_ in SUMMARY_SECTIONS]
+    if len(heads) == 4 and (None in keys or len(set(keys)) < 4):
+        keys = order  # fixed order requested in the prompt -> position decides
     found = {}
-    for i in range(1, len(parts) - 1, 2):
-        head = parts[i].upper()
-        key = ("OVERVIEW" if head.startswith("OVERVIEW") else "CLEANING" if head.startswith("CLEANING")
-               else "RISKS" if "RISK" in head else "RECOMMENDATIONS")
+    for key, body in zip(keys, bodies):
+        if key is None or key in found:
+            continue
         lines = []
-        for raw in parts[i + 1].splitlines():
+        for raw in body.splitlines():
             raw = raw.strip()
             if not raw:
                 continue
@@ -327,7 +391,7 @@ def parse_summary(text):
             found[key] = lines
     if len(found) < 2:
         return None
-    return [(k, found[k]) for k, *_ in SUMMARY_SECTIONS if k in found]
+    return [(k, found[k]) for k in order if k in found]
 
 
 def render_summary_html(lines, color):
@@ -399,7 +463,7 @@ if parsed:
 elif summary_text:
     # Unstructured reply: still show it cleanly (markdown symbols stripped, paragraphs kept)
     paras = "".join(f"<p class='rp-sum-text'>{esc(p.strip())}</p>"
-                    for p in re.sub(r"[*#`]+", "", summary_text).split("\n") if p.strip())
+                    for p in re.sub(r"[*#`{}\"]+", "", summary_text).split("\n") if p.strip())
     render(f"<div class='rp-sum-card' style='background:linear-gradient(160deg,#7F77DD22,#1A1D27 65%);"
            f"border-top:2px solid #7F77DD'>{paras}</div>")
 else:
@@ -436,7 +500,7 @@ def pdf_safe(text):
     return text.encode("latin-1", errors="replace").decode("latin-1")
 
 
-def build_pdf(df, original_df, cleaning_log, summary):
+def build_pdf(df, original_df, cleaning_log, summary, custom_specs=(), include_visuals=False):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Helvetica", "B", 18)
@@ -490,24 +554,107 @@ def build_pdf(df, original_df, cleaning_log, summary):
     else:
         body_line("No AI summary was generated for this export.")
 
+    if include_visuals and cu is not None:
+        pdf.add_page()
+        section_title("Visualizations")
+
+        def sub_heading(text):
+            pdf.set_font("Helvetica", "B", 11)
+            pdf.set_text_color(20, 130, 130)
+            pdf.cell(0, 8, pdf_safe(text), ln=True)
+            pdf.ln(1)
+
+        def add_chart(spec):
+            """Draw one chart (matplotlib PNG) with a one-line explanation underneath."""
+            img_w = 150  # mm
+            try:
+                fig = cu.render_chart(df, spec)
+                w_in, h_in = fig.get_size_inches()
+                img_h = img_w * h_in / w_in
+                caption = cu.describe_chart(df, spec)
+                tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+                tmp.close()
+                fig.savefig(tmp.name, dpi=130)
+                cu.plt.close(fig)
+            except Exception:
+                body_line(f"(Chart unavailable: {spec.get('type', 'chart')})")
+                return
+            try:
+                if pdf.get_y() + img_h + 14 > pdf.page_break_trigger:
+                    pdf.add_page()
+                y = pdf.get_y()
+                pdf.image(tmp.name, x=(210 - img_w) / 2, y=y, w=img_w)
+                pdf.set_y(y + img_h + 1)
+            finally:
+                try:
+                    os.remove(tmp.name)
+                except OSError:
+                    pass
+            pdf.set_font("Helvetica", "I", 9)
+            pdf.set_text_color(90, 90, 90)
+            pdf.set_x((210 - img_w) / 2)
+            pdf.multi_cell(img_w, 5, pdf_safe(caption))
+            pdf.ln(5)
+
+        auto_specs = [s for s in cu.default_chart_specs(df) if cu.spec_is_valid(df, s)]
+        sub_heading(f"Automatic insights ({len(auto_specs)})")
+        if auto_specs:
+            for spec in auto_specs:
+                add_chart(spec)
+        else:
+            body_line("Not enough distinct column types to generate automatic charts.")
+
+        pdf.ln(2)
+        sub_heading(f"Your custom charts ({len(custom_specs)})")
+        if custom_specs:
+            for spec in custom_specs:
+                add_chart(spec)
+        else:
+            body_line("No custom charts were added. On the Visualize page, build a chart and click "
+                      "\"Add this chart to my report\" to include it here.")
+
     return pdf.output(dest="S").encode("latin-1")
 
+
+custom_specs = [s for s in st.session_state.get("custom_charts", []) if cu is not None and cu.spec_is_valid(df, s)]
+auto_count = len([s for s in cu.default_chart_specs(df) if cu.spec_is_valid(df, s)]) if cu is not None else 0
+
+include_visuals = st.checkbox(
+    f"Include visualizations in the PDF ({auto_count} automatic + {len(custom_specs)} custom chart"
+    f"{'s' if len(custom_specs) != 1 else ''}, each with a one-line explanation)",
+    value=cu is not None, key="pdf_include_visuals", disabled=cu is None)
+if cu is None:
+    st.caption("Charts are unavailable because matplotlib couldn't be loaded.")
+elif include_visuals and not custom_specs:
+    st.caption("Tip: build your own charts on the Visualize page and add them to the report.")
+
+pdf_sig = (st.session_state.filename, df.shape, missing_now, len(cleaning_log), summary_text or "",
+           tuple(cu.spec_key(s) for s in custom_specs) if cu is not None else (), include_visuals)
 
 e1, e2 = st.columns(2, gap="medium")
 with e1:
     render("<div style='font-size:12.5px;color:#8B8FA8;margin-bottom:8px'>"
-           "<b style='color:#5EEAD4'>PDF report</b> &mdash; profile, cleaning log and AI summary</div>")
-    try:
-        pdf_bytes = build_pdf(df, original_df, cleaning_log, summary_text)
+           "<b style='color:#5EEAD4'>PDF report</b> &mdash; profile, cleaning log, AI summary and charts</div>")
+    if st.button("🛠️ Build PDF report", key="build_pdf_btn", use_container_width=True):
+        with st.spinner("Building the report and drawing charts..."):
+            try:
+                st.session_state.pdf_report = {
+                    "sig": pdf_sig,
+                    "bytes": build_pdf(df, original_df, cleaning_log, summary_text, custom_specs, include_visuals),
+                }
+            except Exception as e:
+                st.error(f"PDF export failed: {e}")
+    ready = st.session_state.get("pdf_report")
+    if ready and ready["sig"] == pdf_sig:
         st.download_button(
-            "📄 Export as PDF",
-            data=pdf_bytes,
+            "📄 Download PDF report",
+            data=ready["bytes"],
             file_name=f"cleansight_report_{st.session_state.filename.rsplit('.', 1)[0]}.pdf",
             mime="application/pdf",
             use_container_width=True,
         )
-    except Exception as e:
-        st.error(f"PDF export failed: {e}")
+    elif ready:
+        st.caption("Your data, summary or charts changed since this PDF was built - build it again.")
 with e2:
     render(f"<div style='font-size:12.5px;color:#8B8FA8;margin-bottom:8px'>"
            f"<b style='color:#5EEAD4'>Cleaned data</b> &mdash; {df.shape[0]:,} rows × {df.shape[1]} columns as CSV</div>")
